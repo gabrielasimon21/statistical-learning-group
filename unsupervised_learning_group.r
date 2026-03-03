@@ -5,7 +5,13 @@ library(patchwork)
 library(fastDummies)
 
 # Make sure to have the CSV in the same folder as this script
-df <- read.csv("Test.csv")
+df1 <- read.csv("/Test.csv")
+df2 <- read.csv("/Train.csv")
+
+df2 <- df2[-11]
+
+df <- bind_rows(df1, df2)
+
 
 head(df)
 
@@ -51,6 +57,7 @@ df_clean <- df %>%
 sum(is.na(df_clean))
 
 head(df_clean)
+
 
 # Check for outliers
 p1 <- ggplot(df_clean, aes(y = Age)) + geom_boxplot(fill="#00AFBB") + theme_minimal()
@@ -136,4 +143,7 @@ print(cluster_summary)
 
 ggplot(df_interpreted, aes(x = Cluster, fill = Spending_Score)) +
   geom_bar(position = "fill") +
-  labs(y = "Proportion", title = "Spending Habits by Island")
+  labs(y = "Proportion", title = "Spending Habits by Cluster")
+
+
+#T-SNE
