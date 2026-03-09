@@ -2,27 +2,16 @@
 library(tidyverse)
 library(caret)
 library(corrplot)
-
+library(randomForest)
+library(glmnet)
 # Load the data
-df <- read.csv("F:/Student_data.csv")
+df <- read.csv("Student_data.csv")
 
 # Drop Student ID as it holds no predictive value
 df <- df %>% select(-Student_ID)
 
-# Inspect structure and summary
-
-
-View(df)
-
-str(df)
-
-summary(df)
-
-head(df)
-
 # Count the missing values in each column
 colSums(is.na(df))
-
 
 
 # 1. Find the boundaries of the "box" (Q1 and Q3)
@@ -37,7 +26,6 @@ upper_bound <- Q3 + 1.5 * IQR
 
 # 4. Cap the outliers: If a value is above the limit, bring it down to the limit
 df$Study_Hours_Per_Day <- ifelse(df$Study_Hours_Per_Day > upper_bound, upper_bound, df$Study_Hours_Per_Day)
-
 
 
 # We use ggplot (which loaded when you ran library(tidyverse)) to draw the plot
@@ -58,9 +46,6 @@ dummy_model <- dummyVars(" ~ .", data = df)
 
 # 3. Apply the transformation and save it as a new dataset called 'df_encoded'
 df_encoded <- data.frame(predict(dummy_model, newdata = df))
-
-# 4. Check out your new columns!
-head(df_encoded)
 
 # 1. Visualize the distribution of the target variable (Final CGPA)
 ggplot(df_encoded, aes(x = Final_CGPA)) +
@@ -127,3 +112,119 @@ ggplot(results, aes(x = Actual, y = Predicted)) +
   labs(title = "Model Test: Actual vs. Predicted Final CGPA",
        x = "Actual CGPA (What the student really got)",
        y = "Predicted CGPA (What the model guessed)")
+
+
+
+## Random forest
+set.seed(123)
+
+# TRUE to show which variables mattered the most
+rf_model <- randomForest(Final_CGPA ~ ., data = train_data, importance = TRUE)
+# Get prediction from the RF method
+rf_predictions <- predict(rf_model, newdata = test_data)
+
+## Calculating RF metrics to see how well RF is performing
+# Root mean squared error
+rf_rmse <- RMSE(rf_predictions, test_data$Final_CGPA)
+# Mean Absolute error
+rf_mae <- MAE(rf_predictions, test_data$Final_CGPA)
+
+# Aggregating data to a single dataframe 
+performance_comparison <- data.frame(
+  Model = c("Linear Regression (Simple)", "Random Forest (Complex)"),
+  RMSE = c(rmse_value, rf_rmse),
+  MAE = c(mae_value, rf_mae)
+)
+
+# print(performance_comparison)
+#                        Model      RMSE       MAE
+# 1 Linear Regression (Simple) 0.1616677 0.1310931
+# 2    Random Forest (Complex) 0.1426601 0.1150866
+
+# Interpretation: the RMSE is improving in accuracy: roughly 11.8% improvement:
+#   from 0.162 to 0.143 -> 0.019. 0.019/0.1617 = 0,1175 (this is the improvement
+#   based on the starting point)
+
+#   The MSE is the average mistake that the model makes. The error is tinier ->
+#   This means that on average the random forest method guesses the true value
+#   with a higher confidence (0.115 on the possible GPA scale of 4) 
+#   -> 0.115/4= 2,8% of the total possible GPA scale
+
+# Plot which variables the model found most important
+varImpPlot(rf_model, main = "Variable Importance for Final CGPA")
+
+## Lasso model
+
+# Removing the predicted variable in order to perform lasso
+x_train <- as.matrix(train_data[, -which(names(train_data) == "Final_CGPA")])
+y_train <- train_data$Final_CGPA
+
+x_test <- as.matrix(test_data[, -which(names(test_data) == "Final_CGPA")])
+y_test <- test_data$Final_CGPA
+
+grid <- 10^seq(10, -2, length = 100)
+lasso_mod <- glmnet(x_train, y_train, alpha = 1, lambda = grid)
+
+# Cross-validation to find the perfect 
+set.seed(123)
+cv_out <- cv.glmnet(x_train, y_train, alpha = 1)
+bestlam <- cv_out$lambda.min
+
+# Using the best lambda to predict the test matrix
+lasso_preds <- predict(lasso_mod, s = bestlam, newx = x_test)
+
+lasso_rmse <- sqrt(mean((lasso_preds - y_test)^2))
+lasso_mae <- mean(abs(lasso_preds - y_test))
+
+lasso_coef <- predict(lasso_mod, type = "coefficients", s = bestlam)
+print(lasso_coef)
+
+# printing the coefficient we see what are the coefficients the lasso considers
+# 15 x 1 sparse Matrix of class "dgCMatrix"
+# s0
+# (Intercept)            -0.58132906
+# Gender.Female           .         
+# Gender.Male             .         
+# Age                     .         
+# Major.Business          .         
+# Major.Computer.Science  .         
+# Major.Economics         .         
+# Major.Engineering       .         
+# Major.Mathematics       .         
+# Major.Psychology        .         
+# Attendance_Pct          0.01024213
+# Study_Hours_Per_Day     0.04273240
+# Previous_GPA            0.90640637
+# Sleep_Hours             .         
+# Social_Hours_Week      -0.00021973
+
+## Comparing Linear model, RF and Lasso 
+
+model_results <- data.frame(
+  Model = c("Linear Regression", "Random Forest", "Lasso Regression"),
+  RMSE = c(
+    RMSE(predictions, y_test),
+    RMSE(rf_predictions, y_test),
+    sqrt(mean((lasso_preds - y_test)^2))
+  ),
+  MAE = c(
+    MAE(predictions, y_test),
+    MAE(rf_predictions, y_test),
+    mean(abs(lasso_preds - y_test))
+  )
+)
+
+print(model_results)
+
+# Model      RMSE       MAE
+# 1 Linear Regression 0.1616677 0.1310931
+# 2     Random Forest 0.1426601 0.1150866
+# 3  Lasso Regression 0.1626343 0.1317105
+
+# The conclusion are the same as the previous comparison. Seems like the lasso
+# is predicting the same way as the linear model
+
+print(bestlam) # is the best lambda for the cross validation
+
+# error curve plot
+plot(cv_out)
