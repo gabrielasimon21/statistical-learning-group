@@ -228,3 +228,25 @@ print(bestlam) # is the best lambda for the cross validation
 
 # error curve plot
 plot(cv_out)
+
+
+## Time comparison and memory used
+time_lm <- system.time({
+  lm_model <- lm(Final_CGPA ~ ., data = train_data)
+})
+
+time_rf <- system.time({
+  rf_model <- randomForest(Final_CGPA ~ ., data = train_data, importance = TRUE)
+})
+
+cost_comparison <- data.frame(
+  Model = c("Linear Regression", "Random Forest"),
+  Training_Seconds = c(time_lm["elapsed"], time_rf["elapsed"]),
+  Memory_Size = c(object.size(lm_model), object.size(rf_model))
+)
+
+print(cost_comparison)
+
+#               Model Training_Seconds Memory_Size
+# 1 Linear Regression            0.014     2154968
+# 2     Random Forest            8.453    43174800
